@@ -1,17 +1,26 @@
 import{GoogleGenAI} from "@google/genai";
 import { response } from "express";
+import dotenv from "dotenv";
+dotenv.config();
+
 type Severity = 'low' | 'medium' | 'high' | 'critical';
+const apiKey=process.env.GEMINI_API_KEY;
+if(!apiKey){
+  console.error("GEMINI_API_KEY is missing in your .env file!");
+}
 const ai=new GoogleGenAI({apiKey:process.env.GEMINI_API_KEY});
 export const analyzeCodeForBugs=async(codeSnippet:string)=>{
     try{
         const response=await ai.models.generateContent({
-            model:"gemini-2.5-flash",
+            model:"gemini-1.5-flash",
             contents:`Analyze the following code snippet for potential architectural flaws:\n\n${codeSnippet}`,
         });
         return response.text;
     }
-        catch(error){
+        catch(error:any){
             console.error("AI Analysis Error Context:", error);
+            const actualMessage=error.statusMessage||error.message||JSON.stringify(error);
+            
             throw new Error("Failed to process code analysis pipeline setup interface");
 
         }
