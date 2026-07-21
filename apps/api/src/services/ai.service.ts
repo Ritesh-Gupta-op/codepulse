@@ -1,17 +1,30 @@
-import{GoogleGenAI} from "@google/genai";
-import { response } from "express";
 import dotenv from "dotenv";
 dotenv.config();
 
 type Severity = 'low' | 'medium' | 'high' | 'critical';
-const apiKey=process.env.GEMINI_API_KEY;
-if(!apiKey){
+const apiKey = process.env.GEMINI_API_KEY;
+if (!apiKey) {
   console.error("GEMINI_API_KEY is missing in your .env file!");
 }
-const ai=new GoogleGenAI({apiKey:process.env.GEMINI_API_KEY});
+
+// Optional integration with @google/genai. If the package is not installed
+// provide a safe stub so the project can still compile and run.
+let ai: any;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const pkg = require('@google/genai');
+  const GoogleGenAI = pkg?.GoogleGenAI ?? pkg?.default ?? pkg;
+  ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+} catch (e) {
+  ai = {
+    models: {
+      generateContent: async () => ({ text: 'AI integration not available' })
+    }
+  };
+}
 export const analyzeCodeForBugs=async(codeSnippet:string)=>{
     try{
-        const response=await ai.models.generateContent({
+        const response = await ai.models.generateContent({
             model:"gemini-1.5-flash",
             contents:`Analyze the following code snippet for potential architectural flaws:\n\n${codeSnippet}`,
         });
