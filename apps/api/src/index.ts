@@ -11,6 +11,14 @@ async function bootstrap(): Promise<void> {
     // Create Express application
     const app = createApp();
 
+    // Root route to verify server status in browser
+    app.get("/", (req, res) => {
+      res.json({
+        message: "CodePulse AI API is running running smoothly! 🚀",
+        apiDocumentation: "/api",
+      });
+    });
+
     // Mount API routes
     app.use("/api", apiRouter);
 
@@ -19,6 +27,7 @@ async function bootstrap(): Promise<void> {
       console.log(
         `CodePulse AI API listening on port ${env.PORT}`
       );
+      console.log(`Server running at: http://localhost:${env.PORT}`);
     });
 
     // Graceful shutdown
