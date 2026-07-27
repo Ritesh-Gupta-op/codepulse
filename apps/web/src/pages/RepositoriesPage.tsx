@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AppShell } from '../components/layout/AppShell';
 import { Github, Trash2, ExternalLink, Loader2, Plus, Code, ShieldCheck } from 'lucide-react';
 
@@ -11,7 +11,7 @@ interface Repository {
   healthScore: number;
 }
 
-const initialRepos: Repository[] = [
+const defaultRepos: Repository[] = [
   { id: '1', owner: 'Manish1678-sos', name: 'Dev-Note', language: 'JavaScript', status: 'complete', healthScore: 92 },
   { id: '2', owner: 'facebook', name: 'react', language: 'TypeScript', status: 'complete', healthScore: 88 },
   { id: '3', owner: 'fastapi', name: 'fastapi', language: 'Python', status: 'complete', healthScore: 95 },
@@ -19,38 +19,83 @@ const initialRepos: Repository[] = [
 
 export function RepositoriesPage() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [repos, setRepos] = useState<Repository[]>(initialRepos);
+  
+  // 1. Initial State: Load from LocalStorage if available so items persist across pages
+  const [repos, setRepos] = useState<Repository[]>(() => {
+    const saved = localStorage.getItem('codepulse_repos');
+    return saved ? JSON.parse(saved) : defaultRepos;
+  });
+
   const [owner, setOwner] = useState('');
   const [repoName, setRepoName] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState('All');
 
+  // Sync state to LocalStorage whenever repos change
+  useEffect(() => {
+    localStorage.setItem('codepulse_repos', JSON.stringify(repos));
+  }, [repos]);
+
+  // Optional: Sync from Backend API on mount
+  useEffect(() => {
+    const fetchFromBackend = async () => {
+      try {
+        const res = await fetch('http://localhost:5000/api/v1/repositories');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.repositories) setRepos(data.repositories);
+        }
+      } catch (err) {
+        // Backend offline hole LocalStorage default gulo kaaj korbe
+      }
+    };
+    fetchFromBackend();
+  }, []);
+
   // Add & Scan Handler
-  const handleImport = (e: React.FormEvent) => {
+  const handleImport = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!owner.trim() || !repoName.trim()) return;
 
     setIsScanning(true);
 
-    setTimeout(() => {
-      const newRepo: Repository = {
-        id: Date.now().toString(),
-        owner: owner.trim(),
-        name: repoName.trim(),
-        language: 'JavaScript', // Default placeholder
-        status: 'complete',
-        healthScore: Math.floor(Math.random() * 20) + 80, // Random health score 80-99
-      };
+    const newRepo: Repository = {
+      id: Date.now().toString(),
+      owner: owner.trim(),
+      name: repoName.trim(),
+      language: 'JavaScript',
+      status: 'complete',
+      healthScore: Math.floor(Math.random() * 20) + 80,
+    };
 
-      setRepos((prev) => [newRepo, ...prev]);
-      setOwner('');
-      setRepoName('');
-      setIsScanning(false);
-    }, 1500);
+    // Try posting to Backend DB
+    try {
+      await fetch('http://localhost:5000/api/v1/repositories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newRepo),
+      });
+    } catch (err) {
+      console.log('Backend not connected, saving to local persistence');
+    }
+
+    // Update state (automatically triggers LocalStorage sync via useEffect)
+    setRepos((prev) => [newRepo, ...prev]);
+    setOwner('');
+    setRepoName('');
+    setIsScanning(false);
   };
 
   // Delete Handler
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
+    try {
+      await fetch(`http://localhost:5000/api/v1/repositories/${id}`, {
+        method: 'DELETE',
+      });
+    } catch (err) {
+      console.log('Backend not connected, removing locally');
+    }
+
     setRepos((prev) => prev.filter((r) => r.id !== id));
   };
 

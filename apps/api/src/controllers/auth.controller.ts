@@ -1,53 +1,56 @@
-import bcrypt from 'bcryptjs';
-import type { Request, Response } from 'express';
-import { User } from '../models/User.js';
-import { ApiError } from '../utils/apiError.js';
-import { ApiResponse } from '../utils/apiResponse.js';
-import { signAccessToken } from '../services/token.service.js';
+import { Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 
-export async function register(req: Request, res: Response): Promise<Response> {
-  const { name, email, password } = req.body as { name?: string; email?: string; password?: string };
+// In-memory or Redis/Mongo store for pending OTPs (use DB for production)
+const pendingOTPs = new Map<string, { code: string; expiresAt: number }>();
 
-  if (!name || !email || !password) {
-    throw new ApiError(400, 'Name, email, and password are required');
+export const loginUser = async (req: Request, res: Response) => {
+  const { email, password } = req.body;
+
+  // 1. Validate user credentials from MongoDB here...
+  // const user = await User.findOne({ email });
+
+  // 2. Generate a 6-digit OTP code
+  const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+  
+  // 3. Store OTP temporarily (expires in 5 mins)
+  pendingOTPs.set(email, {
+    code: otpCode,
+    expiresAt: Date.now() + 5 * 60 * 1000,
+  });
+
+  // 4. Send OTP via email (Console log for local testing)
+  console.log(`[2FA OTP CODE for ${email}]: ${otpCode}`);
+
+  return res.status(200).json({
+    success: true,
+    require2FA: true,
+    email,
+    message: "2FA code sent to your email.",
+  });
+};
+
+export const verify2FA = async (req: Request, res: Response) => {
+  const { email, otp } = req.body;
+  const record = pendingOTPs.get(email);
+
+  if (!record || record.expiresAt < Date.now()) {
+    return res.status(400).json({ success: false, message: "OTP expired or invalid" });
   }
 
-  const existingUser = await User.findOne({ email }).lean();
-  if (existingUser) {
-    throw new ApiError(409, 'Email is already registered');
+  if (record.code !== otp) {
+    return res.status(400).json({ success: false, message: "Invalid OTP code" });
   }
 
-  const passwordHash = await bcrypt.hash(password, 12);
-  const user = await User.create({ name, email, passwordHash, authProvider: 'local' });
-  const token = signAccessToken({ sub: String(user._id), role: user.role as 'user' | 'admin' });
+  // Clear OTP after successful use
+  pendingOTPs.delete(email);
 
-  return res.status(201).json(new ApiResponse('User registered successfully', { token, user }));
-}
+  // Generate final auth token
+  const token = jwt.sign({ email }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
 
-export async function login(req: Request, res: Response): Promise<Response> {
-  const { email, password } = req.body as { email?: string; password?: string };
-
-  if (!email || !password) {
-    throw new ApiError(400, 'Email and password are required');
-  }
-
-  const user = await User.findOne({ email });
-  if (!user || !user.passwordHash) {
-    throw new ApiError(401, 'Invalid credentials');
-  }
-
-  const matches = await bcrypt.compare(password, user.passwordHash);
-  if (!matches) {
-    throw new ApiError(401, 'Invalid credentials');
-  }
-
-  user.lastLoginAt = new Date();
-  await user.save();
-
-  const token = signAccessToken({ sub: String(user._id), role: user.role as 'user' | 'admin' });
-  return res.json(new ApiResponse('Login successful', { token, user }));
-}
-
-export async function me(req: Request, res: Response): Promise<Response> {
-  return res.json(new ApiResponse('Current user', { user: req.user ?? null }));
-}
+  return res.status(200).json({
+    success: true,
+    message: "Authentication successful",
+    token,
+  });
+};

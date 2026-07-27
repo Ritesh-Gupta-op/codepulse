@@ -1,12 +1,12 @@
 import { Router } from 'express';
-import { login, me, register } from '../controllers/auth.controller.js';
-import { asyncHandler } from '../utils/asyncHandler.js';
-import { requireAuth } from '../middleware/auth.js';
+import { verify2FA, loginUser } from '../controllers/auth.controller.js';
 
 const router = Router();
 
-router.post('/register', asyncHandler(register));
-router.post('/login', asyncHandler(login));
-router.get('/me', requireAuth, asyncHandler(me));
+// Step 1: Initial Login (returns require2FA status + temporary token)
+router.post('/login', loginUser);
 
-export { router as authRouter };
+// Step 2: Verify 6-digit OTP code
+router.post('/verify-2fa', verify2FA);
+
+export default router;
